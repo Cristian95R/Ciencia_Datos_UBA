@@ -1,0 +1,918 @@
+#=================== Informacion del Estudiante ================= ============
+#Nombre: Cristian Francisco
+#Apellido: Rodriguez
+#Correo: 44RO38870198@campus.economicas.uba.ar
+legajo <- 894495
+
+# === CONFIGURACIoN INICIAL ===
+# Establecer semilla para reproducibilidad
+
+set.seed(legajo)
+install.packages("tidyverse")
+install.packages("lubridate")
+install.packages("scales")
+
+# Cargar librerias necesarias
+library(tidyverse)
+library(lubridate)  
+# Para manejo de fechas
+library(scales)     
+# Para formateo de valores
+
+# Crear directorio para resultados
+if(!dir.exists("resultados")) {
+  dir.create("resultados")
+}
+
+# En un examen real, los alumnos generarian sus datos aqui:
+source("C:/Users/Cristian/Documents/UBA/Ciencia_Datos/generar_datos_examen.R")
+
+datos <- generar_datos_examen(legajo)
+guardar_datos_examen(datos)
+
+# Rutas archivos 
+instub <- 'datos_examen'
+outstub <- 'resultados'
+
+# Cargar datos (asumimos que ya estan generados)
+transacciones <- read.csv(file.path(instub,"transacciones.csv"))
+usuarios_alquilan <- read.csv(file.path(instub,"usuarios_alquilan.csv"))
+usuarios_arrendatarios <- read.csv(file.path(instub,"usuarios_arrendatarios.csv"))
+casas <- read.csv(file.path(instub,"casas.csv"))
+detalles_transacciones <- read.csv(file.path(instub,"detalles_transacciones.csv"))
+
+# Convertir columnas de fecha a tipo Date
+transacciones$fecha_transaccion <- ymd(transacciones$fecha_transaccion)
+usuarios_alquilan$fecha_registro <- ymd(usuarios_alquilan$fecha_registro)
+usuarios_arrendatarios$fecha_registro <- ymd(usuarios_arrendatarios$fecha_registro)
+detalles_transacciones$fecha_checkin <- ymd(detalles_transacciones$fecha_checkin)
+detalles_transacciones$fecha_checkout <- ymd(detalles_transacciones$fecha_checkout)
+
+# Funciones para generar datos de examen - Alquiler de casas temporales
+# Estas funciones generan 5 tablas relacionadas con datos aleatorios basados en el numero de legajo
+
+# Funcion principal que genera todas las tablas
+generar_datos_examen <- function(legajo) {
+  # Establecer la semilla para reproducibilidad basada en el legajo
+  set.seed(as.numeric(legajo))
+  
+  # Parametros de dimension
+  n_usuarios_alquilan <- 5000     # Usuarios que alquilan propiedades
+  n_usuarios_arrendatarios <- 1000 # Propietarios/arrendatarios
+  n_casas <- 3000                  # Propiedades disponibles
+  n_transacciones <- 100000        # Transacciones totales
+  
+  # Generar las tablas
+  usuarios_alquilan <- generar_usuarios_alquilan(n_usuarios_alquilan)
+  usuarios_arrendatarios <- generar_usuarios_arrendatarios(n_usuarios_arrendatarios)
+  casas <- generar_casas(n_casas, usuarios_arrendatarios$id_arrendatario)
+  transacciones <- generar_transacciones(n_transacciones, 
+                                         usuarios_alquilan$id_alquila, 
+                                         usuarios_arrendatarios$id_arrendatario,
+                                         casas$id_casa)
+  detalles_transacciones <- generar_detalles_transacciones(transacciones$id_transaccion, casas)
+  
+  # Retornar todas las tablas en una lista
+  return(list(
+    transacciones = transacciones,
+    usuarios_alquilan = usuarios_alquilan,
+    usuarios_arrendatarios = usuarios_arrendatarios,
+    casas = casas,
+    detalles_transacciones = detalles_transacciones
+  ))
+}
+
+# Funcion para generar la tabla de usuarios que alquilan (inquilinos)
+generar_usuarios_alquilan <- function(n) {
+  # Vectores de opciones
+  provincias <- c('Buenos Aires', 'CABA', 'Catamarca', 'Chaco', 'Chubut', 
+                  'Cordoba', 'Corrientes', 'Entre Rios', 'Formosa', 'Jujuy', 
+                  'La Pampa', 'La Rioja', 'Mendoza', 'Misiones', 'Neuquen', 
+                  'Rio Negro', 'Salta', 'San Juan', 'San Luis', 'Santa Cruz', 
+                  'Santa Fe', 'Santiago del Estero', 'Tierra del Fuego', 'Tucuman')
+  
+  niveles_verificacion <- c('Basico', 'Intermedio', 'Completo')
+  
+  # Generar datos aleatorios
+  id_alquila <- 1:n
+  sexo <- sample(c('Masculino', 'Femenino'), n, replace = TRUE)
+  edad <- sample(18:70, n, replace = TRUE)
+  provincia_nacimiento <- sample(provincias, n, replace = TRUE)
+  cantidad_alquileres <- sample(0:50, n, replace = TRUE)
+  calificacion_media <- round(runif(n, 1, 5), 1)
+  
+  # Fechas de registro (ultimos 5 años)
+  fecha_registro <- as.Date(sample(
+    seq(as.Date('2019-01-01'), as.Date('2024-12-31'), by = "day"),
+    n, replace = TRUE
+  ))
+  
+  nivel_verificacion <- sample(niveles_verificacion, n, replace = TRUE)
+  
+  # Campos adicionales interesantes
+  idiomas_hablados <- sample(
+    c('Espaniol', 'Espaniol,Ingles', 'Espaniol,Ingles,Portugues', 'Espaniol,Portugues'),
+    n, replace = TRUE
+  )
+  
+  preferencia_ubicacion <- sample(provincias, n, replace = TRUE)
+  
+  # Crear dataframe
+  data.frame(
+    id_alquila = id_alquila,
+    sexo = sexo,
+    edad = edad,
+    provincia_nacimiento = provincia_nacimiento,
+    cantidad_alquileres = cantidad_alquileres,
+    calificacion_media = calificacion_media,
+    fecha_registro = fecha_registro,
+    nivel_verificacion = nivel_verificacion,
+    idiomas_hablados = idiomas_hablados,
+    preferencia_ubicacion = preferencia_ubicacion,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Funcion para generar la tabla de usuarios arrendatarios (propietarios)
+generar_usuarios_arrendatarios <- function(n) {
+  # Vectores de opciones
+  provincias <- c('Buenos Aires', 'CABA', 'Catamarca', 'Chaco', 'Chubut', 
+                  'Cordoba', 'Corrientes', 'Entre Rios', 'Formosa', 'Jujuy', 
+                  'La Pampa', 'La Rioja', 'Mendoza', 'Misiones', 'Neuquen', 
+                  'Rio Negro', 'Salta', 'San Juan', 'San Luis', 'Santa Cruz', 
+                  'Santa Fe', 'Santiago del Estero', 'Tierra del Fuego', 'Tucuman')
+  
+  niveles_verificacion <- c('Basico', 'Intermedio', 'Completo')
+  
+  # Generar datos aleatorios
+  id_arrendatario <- 1:n
+  sexo <- sample(c('Masculino', 'Femenino'), n, replace = TRUE)
+  edad <- sample(25:75, n, replace = TRUE)
+  provincia_nacimiento <- sample(provincias, n, replace = TRUE)
+  cantidad_viviendas_publicadas <- sample(1:10, n, replace = TRUE)
+  calificacion_media <- round(runif(n, 1, 5), 1)
+  
+  # Fechas de registro (pueden ser mas antiguas que los inquilinos)
+  fecha_registro <- as.Date(sample(
+    seq(as.Date('2017-01-01'), as.Date('2024-12-31'), by = "day"),
+    n, replace = TRUE
+  ))
+  
+  nivel_verificacion <- sample(niveles_verificacion, n, replace = TRUE)
+  es_superanfitrion <- sample(c(TRUE, FALSE), n, replace = TRUE, prob = c(0.2, 0.8))
+  tiempo_respuesta_hrs <- sample(c(1, 2, 4, 8, 12, 24, 48), n, replace = TRUE)
+  
+  # Campos adicionales interesantes
+  anos_experiencia <- sample(1:15, n, replace = TRUE)
+  politica_cancelacion <- sample(
+    c('Flexible', 'Moderada', 'Estricta'), 
+    n, replace = TRUE,
+    prob = c(0.3, 0.4, 0.3)
+  )
+  
+  # Crear dataframe
+  data.frame(
+    id_arrendatario = id_arrendatario,
+    sexo = sexo,
+    edad = edad,
+    provincia_nacimiento = provincia_nacimiento,
+    cantidad_viviendas_publicadas = cantidad_viviendas_publicadas,
+    calificacion_media = calificacion_media,
+    fecha_registro = fecha_registro,
+    nivel_verificacion = nivel_verificacion,
+    es_superanfitrion = es_superanfitrion,
+    tiempo_respuesta_hrs = tiempo_respuesta_hrs,
+    anos_experiencia = anos_experiencia,
+    politica_cancelacion = politica_cancelacion,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Funcion para generar la tabla de casas/viviendas
+generar_casas <- function(n, ids_arrendatarios) {
+  # Vectores de opciones
+  provincias <- c('Buenos Aires', 'CABA', 'Catamarca', 'Chaco', 'Chubut', 
+                  'Cordoba', 'Corrientes', 'Entre Rios', 'Formosa', 'Jujuy', 
+                  'La Pampa', 'La Rioja', 'Mendoza', 'Misiones', 'Neuquen', 
+                  'Rio Negro', 'Salta', 'San Juan', 'San Luis', 'Santa Cruz', 
+                  'Santa Fe', 'Santiago del Estero', 'Tierra del Fuego', 'Tucuman')
+  
+  tipos_vivienda <- c('Casa', 'Departamento', 'Cabania', 'Loft', 'Chalet')
+  
+  categorias_vivienda <- c('Economica', 'Estandar', 'Premium', 'Lujo', 'Ultra lujo')
+  
+  amenities_posibles <- c(
+    'WiFi', 'Pileta', 'Aire acondicionado', 'Calefaccion', 
+    'Cocina equipada', 'Lavadora', 'TV', 'Estacionamiento', 
+    'Parrilla', 'Terraza', 'Gimnasio', 'Jacuzzi', 'Vista al mar', 
+    'Acceso a playa', 'Seguridad 24hs'
+  )
+  
+  # Generar datos aleatorios
+  id_casa <- 1:n
+  
+  # Asignar arrendatarios a casas (un arrendatario puede tener multiples casas)
+  id_arrendatario <- sample(ids_arrendatarios, n, replace = TRUE)
+  
+  tipo_vivienda <- sample(tipos_vivienda, n, replace = TRUE)
+  provincia_ubicacion <- sample(provincias, n, replace = TRUE)
+  capacidad_maxima <- sample(2:12, n, replace = TRUE)
+  numero_habitaciones <- sample(1:6, n, replace = TRUE)
+  numero_banos <- sample(1:4, n, replace = TRUE)
+  
+  # El precio base depende en parte de la categoria
+  categoria <- sample(categorias_vivienda, n, replace = TRUE)
+  
+  # Asignar precios que reflejen la categoria
+  precio_base_noche <- sapply(categoria, function(cat) {
+    base <- switch(cat,
+                   'Economica' = runif(1, 5000, 12000),
+                   'Estandar' = runif(1, 10000, 20000),
+                   'Premium' = runif(1, 18000, 30000),
+                   'Lujo' = runif(1, 25000, 40000),
+                   'Ultra lujo' = runif(1, 35000, 60000))
+    round(base)
+  })
+  
+  distancia_centro_km <- round(runif(n, 0, 15), 1)
+  anio_construccion <- sample(1950:2023, n, replace = TRUE)
+  
+  # Generar amenities para cada vivienda
+  amenities <- sapply(1:n, function(i) {
+    n_amenities <- sample(2:8, 1)
+    paste(sample(amenities_posibles, n_amenities), collapse = ",")
+  })
+  
+  # Calificaciones
+  calificacion_limpieza <- round(runif(n, 1, 5), 1)
+  calificacion_ubicacion <- round(runif(n, 1, 5), 1)
+  calificacion_general <- round(runif(n, 1, 5), 1)
+  
+  # Campos adicionales interesantes
+  mascotas_permitidas <- sample(c(TRUE, FALSE), n, replace = TRUE)
+  fumadores_permitidos <- sample(c(TRUE, FALSE), n, replace = TRUE, prob = c(0.1, 0.9))
+  eventos_permitidos <- sample(c(TRUE, FALSE), n, replace = TRUE, prob = c(0.2, 0.8))
+  
+  # Crear dataframe
+  data.frame(
+    id_casa = id_casa,
+    id_arrendatario = id_arrendatario,
+    tipo_vivienda = tipo_vivienda,
+    provincia_ubicacion = provincia_ubicacion,
+    capacidad_maxima = capacidad_maxima,
+    numero_habitaciones = numero_habitaciones,
+    numero_banos = numero_banos,
+    precio_base_noche = precio_base_noche,
+    categoria = categoria,
+    distancia_centro_km = distancia_centro_km,
+    anio_construccion = anio_construccion,
+    amenities = amenities,
+    calificacion_limpieza = calificacion_limpieza,
+    calificacion_ubicacion = calificacion_ubicacion,
+    calificacion_general = calificacion_general,
+    mascotas_permitidas = mascotas_permitidas,
+    fumadores_permitidos = fumadores_permitidos,
+    eventos_permitidos = eventos_permitidos,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Funcion para generar la tabla de transacciones
+generar_transacciones <- function(n, ids_alquila, ids_arrendatario, ids_casa) {
+  id_transaccion <- 1:n
+  
+  # Para cada transaccion:
+  # 1. Elegir aleatoriamente una casa
+  # 2. El arrendatario esta determinado por la casa
+  # 3. Elegir aleatoriamente un usuario que alquila
+  
+  # Seleccionar casas aleatorias para cada transaccion
+  idx_casa <- sample(length(ids_casa), n, replace = TRUE)
+  id_casa <- ids_casa[idx_casa]
+  
+  # Seleccionar usuarios que alquilan aleatorios
+  id_alquila <- sample(ids_alquila, n, replace = TRUE)
+  
+  # Para cada casa, obtener su arrendatario
+  # En un caso real esto seria una join, pero aqui lo simulamos:
+  casa_a_arrendatario <- setNames(
+    sample(ids_arrendatario, length(ids_casa), replace = TRUE),
+    ids_casa
+  )
+  
+  id_arrendatario <- casa_a_arrendatario[as.character(id_casa)]
+  
+  # Generar fechas de transaccion (ultimos 2 años)
+  fecha_transaccion <- as.Date(sample(
+    seq(as.Date('2023-01-01'), as.Date('2024-12-31'), by = "day"),
+    n, replace = TRUE
+  ))
+  
+  # Campos adicionales interesantes
+  origen_reserva <- sample(
+    c('App Movil', 'Sitio Web', 'Telefono', 'Agencia'),
+    n, replace = TRUE,
+    prob = c(0.45, 0.40, 0.10, 0.05)
+  )
+  
+  # Crear dataframe
+  data.frame(
+    id_transaccion = id_transaccion,
+    id_alquila = id_alquila,
+    id_arrendatario = id_arrendatario,
+    id_casa = id_casa,
+    fecha_transaccion = fecha_transaccion,
+    origen_reserva = origen_reserva,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Funcion para generar detalles de transacciones
+generar_detalles_transacciones <- function(ids_transaccion, casas) {
+  n <- length(ids_transaccion)
+  
+  # Para cada transaccion, necesitamos algunas propiedades de la casa
+  # En un caso real esto seria un join, pero aqui simulamos:
+  transaccion_a_casa <- sample(casas$id_casa, n, replace = TRUE)
+  capacidades <- casas$capacidad_maxima[match(transaccion_a_casa, casas$id_casa)]
+  precios_base <- casas$precio_base_noche[match(transaccion_a_casa, casas$id_casa)]
+  
+  # Generar datos aleatorios
+  cantidad_noches <- sample(1:14, n, replace = TRUE)
+  
+  # El precio pactado varia del precio base (temporada alta/baja, promociones, etc.)
+  factor_precio <- runif(n, 0.8, 1.2)
+  precio_noche <- round(precios_base * factor_precio)
+  
+  # Cantidad de personas limitada por la capacidad de cada casa
+  cantidad_personas <- sapply(1:n, function(i) {
+    sample(1:capacidades[i], 1)
+  })
+  
+  # Fechas de check-in/out basadas en la fecha de transaccion
+  # Primero asumimos fechas de transaccion aleatorias
+  fechas_transaccion <- as.Date(sample(
+    seq(as.Date('2023-01-01'), as.Date('2024-12-31'), by = "day"),
+    n, replace = TRUE
+  ))
+  
+  # El check-in es despues de la transaccion (entre 7 y 90 dias despues)
+  dias_hasta_checkin <- sample(7:90, n, replace = TRUE)
+  fecha_checkin <- fechas_transaccion + dias_hasta_checkin
+  
+  # El check-out depende de la cantidad de noches
+  fecha_checkout <- fecha_checkin + cantidad_noches
+  
+  # Metodos de pago
+  metodo_pago <- sample(
+    c('Tarjeta de credito', 'Transferencia bancaria', 'Efectivo', 'Billetera virtual'),
+    n, replace = TRUE,
+    prob = c(0.6, 0.2, 0.1, 0.1)
+  )
+  
+  # Estados de transaccion
+  estado_transaccion <- sample(
+    c('Completada', 'Cancelada', 'Pendiente', 'En curso'),
+    n, replace = TRUE,
+    prob = c(0.7, 0.1, 0.1, 0.1)
+  )
+  
+  # Descuentos, costos adicionales e impuestos
+  descuento_aplicado <- sample(0:30, n, replace = TRUE)
+  costo_limpieza <- sample(2000:8000, n, replace = TRUE)
+  
+  # El costo de servicio es un porcentaje del total
+  costo_servicio <- round(precio_noche * cantidad_noches * 0.15)
+  
+  # Impuestos (IVA 21%)
+  impuestos <- round(precio_noche * cantidad_noches * 0.21)
+  
+  # Calificaciones (solo para transacciones completadas)
+  calificacion_huesped <- ifelse(
+    estado_transaccion == 'Completada',
+    sample(1:5, n, replace = TRUE),
+    NA
+  )
+  
+  calificacion_anfitrion <- ifelse(
+    estado_transaccion == 'Completada',
+    sample(1:5, n, replace = TRUE),
+    NA
+  )
+  
+  # Crear dataframe
+  data.frame(
+    id_transaccion = ids_transaccion,
+    cantidad_noches = cantidad_noches,
+    precio_noche = precio_noche,
+    cantidad_personas = cantidad_personas,
+    fecha_checkin = fecha_checkin,
+    fecha_checkout = fecha_checkout,
+    metodo_pago = metodo_pago,
+    estado_transaccion = estado_transaccion,
+    descuento_aplicado = descuento_aplicado, 
+    costo_limpieza = costo_limpieza,
+    costo_servicio = costo_servicio,
+    impuestos = impuestos,
+    calificacion_huesped = calificacion_huesped,
+    calificacion_anfitrion = calificacion_anfitrion,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Funcion para guardar los datos generados en archivos CSV
+guardar_datos_examen <- function(datos, carpeta = "datos_examen") {
+  # Crear la carpeta si no existe
+  if(!dir.exists(carpeta)) {
+    dir.create(carpeta, recursive = TRUE)
+  }
+  
+  # Guardar cada tabla en un archivo CSV
+  write.csv(datos$transacciones, 
+            file.path(carpeta, "transacciones.csv"), 
+            row.names = FALSE)
+  
+  write.csv(datos$usuarios_alquilan, 
+            file.path(carpeta, "usuarios_alquilan.csv"), 
+            row.names = FALSE)
+  
+  write.csv(datos$usuarios_arrendatarios, 
+            file.path(carpeta, "usuarios_arrendatarios.csv"), 
+            row.names = FALSE)
+  
+  write.csv(datos$casas, 
+            file.path(carpeta, "casas.csv"), 
+            row.names = FALSE)
+  
+  write.csv(datos$detalles_transacciones, 
+            file.path(carpeta, "detalles_transacciones.csv"), 
+            row.names = FALSE)
+  
+  cat("Datos guardados en la carpeta:", carpeta, "\n")
+}
+
+# Ejemplo de uso:
+# mi_legajo <- "882280"
+# datos <- generar_datos_examen(mi_legajo)
+# guardar_datos_examen(datos)
+
+# Para generar datos especificos para un alumno:
+generar_datos_alumno <- function(legajo, carpeta = NULL) {
+  # Si no se especifica carpeta, usar el legajo como nombre
+  if(is.null(carpeta)) {
+    carpeta <- paste0("datos_alumno_", legajo)
+  }
+  
+  # Generar y guardar los datos
+  datos <- generar_datos_examen(legajo)
+  guardar_datos_examen(datos, carpeta)
+  
+  # Devolver un resumen de los datos generados
+  resumen <- list(
+    num_transacciones = nrow(datos$transacciones),
+    num_usuarios_alquilan = nrow(datos$usuarios_alquilan),
+    num_usuarios_arrendatarios = nrow(datos$usuarios_arrendatarios),
+    num_casas = nrow(datos$casas),
+    primera_fecha = min(datos$transacciones$fecha_transaccion),
+    ultima_fecha = max(datos$transacciones$fecha_transaccion)
+  )
+  
+  return(resumen)
+}
+
+# Uso para un solo alumno:
+# resumen <- generar_datos_alumno("882280")
+# print(resumen)
+
+# Para generar datos para multiples alumnos (si tienes una lista de legajos)
+generar_datos_curso <- function(legajos, carpeta_base = "datos_examen_curso") {
+  # Crear la carpeta base
+  if(!dir.exists(carpeta_base)) {
+    dir.create(carpeta_base, recursive = TRUE)
+  }
+  
+  # Generar datos para cada alumno
+  resumenes <- list()
+  
+  for(legajo in legajos) {
+    carpeta_alumno <- file.path(carpeta_base, paste0("alumno_", legajo))
+    cat("Generando datos para alumno con legajo:", legajo, "\n")
+    resumenes[[legajo]] <- generar_datos_alumno(legajo, carpeta_alumno)
+  }
+  
+  return(resumenes)
+}
+
+#========================Ejercicio 1============================================
+#join de las dos tablas
+transacciones_completo <- transacciones %>%
+  left_join(detalles_transacciones, by = "id_transaccion")
+
+#Se crea la columna año-mes
+transacciones_completo <- transacciones_completo %>%
+  mutate(anio_mes = floor_date(as.Date(fecha_checkin), unit = "month"))
+
+#Calculo ingreso total por transaccion
+transacciones_completo <- transacciones_completo %>%
+  mutate(
+    ingreso_total = (precio_noche * cantidad_noches) +
+      costo_limpieza + costo_servicio + impuestos
+  )
+
+#Agrupo por anio_mes 
+resumen_mensual <- transacciones_completo %>%
+  group_by(anio_mes) %>%
+  summarise(
+    total_ingresos = sum(ingreso_total, na.rm = TRUE),
+    cantidad_transacciones = n(),
+    ingreso_promedio = mean(ingreso_total, na.rm = TRUE),
+    noches_totales = sum(cantidad_noches, na.rm = TRUE),
+    tasa_ocupacion = 100 * sum(cantidad_noches, na.rm = TRUE) / 
+      (n_distinct(id_casa) * days_in_month(first(anio_mes)))
+  ) %>%
+  arrange(anio_mes)
+#Genero CSV
+write.csv(resumen_mensual, 
+          file = file.path(outstub, "ingresos_mensuales.csv"), 
+          row.names = FALSE)
+#========================Ejercicio 3============================================
+#join de las dos tablas
+transacciones_completo_3 <- transacciones %>%
+  left_join(detalles_transacciones, by = "id_transaccion")
+
+# Creo la columna grupo_descuento y Temporada
+transacciones_completo_3 <- transacciones_completo_3 %>%
+  mutate(
+    grupo_descuento = case_when(
+      descuento_aplicado == 0 ~ "0%",
+      descuento_aplicado > 0 & descuento_aplicado <= 10 ~ "1-10%",
+      descuento_aplicado > 10 & descuento_aplicado <= 20 ~ "11-20%",
+      descuento_aplicado > 20 ~ ">20%",
+      TRUE ~ "Sin dato"
+    )
+  )
+
+transacciones_completo_3 <- transacciones_completo_3 %>%
+  mutate(
+    mes = month(as.Date(fecha_checkin)),
+    temporada = case_when(
+      mes %in% c(12, 1, 2) ~ "Verano",
+      mes %in% c(3, 4, 5) ~ "Otonio",
+      mes %in% c(6, 7, 8) ~ "Invierno",
+      mes %in% c(9, 10, 11) ~ "Primavera",
+      TRUE ~ "Sin dato"
+    )
+  )
+
+# Calculo 
+transacciones_completo_3 <- transacciones_completo_3 %>%
+  mutate(
+    ingreso_total = (precio_noche * cantidad_noches) + costo_limpieza + costo_servicio + impuestos
+  )
+
+resumen_descuentos <- transacciones_completo_3 %>%
+  group_by(grupo_descuento, temporada) %>%
+  summarise(
+    numero_transacciones = n(),
+    duracion_promedio = mean(cantidad_noches, na.rm = TRUE),
+    ingreso_promedio_dia = sum(ingreso_total, na.rm = TRUE) / sum(cantidad_noches, na.rm = TRUE),
+    tasa_cancelacion = mean(estado_transaccion == "Cancelada", na.rm = TRUE) * 100
+  ) %>%
+  arrange(grupo_descuento, temporada)
+
+#Guardo en csv
+write.csv(resumen_descuentos, 
+          file = file.path(outstub, "efectividad_descuentos.csv"), 
+          row.names = FALSE)
+#==============================Ejercicio 5===========================================
+
+#Join de tablas: casas,transacciones & detalles_transacciones
+completo_5 <- casas %>%
+  left_join(transacciones, by = "id_casa") %>%
+  left_join(detalles_transacciones, by = "id_transaccion")
+
+# se crea columna ingreso_total
+completo_5 <- completo_5 %>%
+  mutate(
+    ingreso_total = (precio_noche * cantidad_noches) + costo_limpieza + costo_servicio + impuestos,
+    dias_mes = days_in_month(as.Date(fecha_checkin))
+  )
+
+# Agrupo por provincia_ubicacion y calculo metricas
+rentabilidad_por_provincia_5 <- completo_5 %>%
+  group_by(provincia_ubicacion) %>%
+  summarise(
+    num_propiedades = n_distinct(id_casa),
+    precio_promedio = mean(precio_noche, na.rm = TRUE),
+    tasa_ocupacion = 100 * sum(cantidad_noches, na.rm = TRUE) /
+      (n_distinct(id_casa) * mean(dias_mes, na.rm = TRUE)),
+    ingreso_promedio = sum(ingreso_total, na.rm = TRUE) / n_distinct(id_casa),
+    calificacion_promedio = mean(calificacion_huesped, na.rm = TRUE)
+  ) %>%
+  mutate(
+    ratio_precio_calificacion = precio_promedio / calificacion_promedio,
+    ranking_rentabilidad = rank(desc(ingreso_promedio / calificacion_promedio))
+  ) %>%
+  arrange(ranking_rentabilidad)
+
+# Guardar como CSV
+write.csv(rentabilidad_por_provincia_5, 
+          file = file.path(outstub, "rentabilidad_geografica.csv"), 
+          row.names = FALSE)
+#==============================Ejercicio 7===========================================
+# join casas, transacciones & detalles
+full_7 <- casas %>%
+  left_join(transacciones, by = "id_casa") %>%
+  left_join(detalles_transacciones, by = "id_transaccion")
+
+#promedios por propiedad
+precio_propiedad_7 <- full_7 %>%
+  group_by(id_casa) %>%
+  summarise(
+    precio_promedio = mean(precio_noche, na.rm = TRUE),
+    calificacion_promedio = mean(calificacion_huesped, na.rm = TRUE),
+    calificacion_limpieza_promedio = mean(calificacion_anfitrion, na.rm = TRUE),
+    calificacion_ubicacion_promedio = mean(calificacion_huesped, na.rm = TRUE),
+    tipo_vivienda = first(tipo_vivienda),
+    .groups = "drop"
+  )
+
+precio_propiedad_7 <- precio_propiedad_7 %>%
+  mutate(
+    categoria_precio = case_when(
+      precio_promedio < 10000 ~ "Economico",
+      precio_promedio < 20000 ~ "Moderado",
+      precio_promedio < 35000 ~ "Alto",
+      TRUE ~ "Premium"
+    ),
+    categoria_precio = factor(
+      categoria_precio,
+      levels = c("Economico", "Moderado", "Alto", "Premium"),
+      ordered = TRUE
+    )
+  )
+
+resumen_precio_7 <- precio_propiedad_7 %>%
+  group_by(categoria_precio) %>%
+  summarise(
+    num_propiedades = n(),
+    calificacion_promedio = mean(calificacion_promedio, na.rm = TRUE),
+    calificacion_limpieza_promedio = mean(calificacion_limpieza_promedio, na.rm = TRUE),
+    calificacion_ubicacion_promedio = mean(calificacion_ubicacion_promedio, na.rm = TRUE),
+    precio_promedio = mean(precio_promedio, na.rm = TRUE),
+    relacion_calidad_precio = calificacion_promedio / precio_promedio,
+    .groups = "drop"
+  )
+
+pivot_7 <- precio_propiedad_7 %>%
+  count(tipo_vivienda, categoria_precio) %>%
+  pivot_wider(
+    names_from = categoria_precio,
+    values_from = n,
+    values_fill = 0
+  )
+
+buenas_inv_7 <- precio_propiedad_7 %>%
+  filter(categoria_precio %in% c("Economico", "Moderado") & calificacion_promedio >= 4.5)
+
+malas_inv_7 <- precio_propiedad_7 %>%
+  filter(categoria_precio %in% c("Alto", "Premium") & calificacion_promedio <= 3.5)
+
+#Genero los CVS solicitados:
+write.csv(resumen_precio_7, 
+          file = file.path(outstub, "relacion_precio_calificacion.csv"), 
+          row.names = FALSE)
+write.csv(pivot_7, 
+          file = file.path(outstub, "relacion_precio_tipo_pivoteada.csv"), 
+          row.names = FALSE)
+write.csv(buenas_inv_7, 
+          file = file.path(outstub, "buenas_inversiones.csv"), 
+          row.names = FALSE)
+write.csv(malas_inv_7, 
+          file = file.path(outstub, "malas_inversiones.csv"), 
+          row.names = FALSE)
+
+#==============================Ejercicio 9===========================================
+oportunidades <- casas %>%
+  mutate(
+    precio_por_persona = precio_base_noche / capacidad_maxima,
+    categoria_ratio = case_when(
+      precio_por_persona < 1000 ~ "Bajo",
+      precio_por_persona < 3000 ~ "Medio",
+      precio_por_persona < 5000 ~ "Alto",
+      TRUE ~ "Premium"
+    ),
+    categoria_ratio = factor(categoria_ratio, levels = c("Bajo", "Medio", "Alto", "Premium"), ordered = TRUE),
+    indice_calidad_precio = calificacion_general / precio_por_persona
+  )
+
+#Columnas requeridas 
+oportunidades_resultado <- oportunidades %>%
+  select(id_casa, tipo_vivienda, provincia_ubicacion, precio_base_noche, capacidad_maxima,
+         precio_por_persona, calificacion_general, indice_calidad_precio)
+
+#Pivot
+distribucion_ratio <- oportunidades %>%
+  count(tipo_vivienda, categoria_ratio) %>%
+  pivot_wider(
+    names_from = categoria_ratio,
+    values_from = n,
+    values_fill = 0
+  )
+
+umbral <- quantile(oportunidades$indice_calidad_precio, 0.90, na.rm = TRUE)
+
+mejores_oportunidades <- oportunidades %>%
+  filter(indice_calidad_precio >= umbral) %>%
+  select(id_casa, tipo_vivienda, provincia_ubicacion, precio_base_noche, capacidad_maxima,
+         precio_por_persona, calificacion_general, indice_calidad_precio)
+
+#genero los csv solicitados
+write.csv(oportunidades_resultado, 
+          file = file.path(outstub, "ratio_precio_capacidad.csv"), 
+          row.names = FALSE)
+write.csv(distribucion_ratio, 
+          file = file.path(outstub, "distribucion_ratio_por_tipo.csv"), 
+          row.names = FALSE)
+write.csv(distribucion_ratio, 
+          file = file.path(outstub, "mejores_oportunidades_precio_capacidad.csv"), 
+          row.names = FALSE)
+
+#==============================Ejercicio 11===========================================
+#separo amenities en filas individuales
+amenities_expandido <- casas %>%
+  select(id_casa, tipo_vivienda, amenities) %>%
+  separate_rows(amenities, sep = ",") %>%
+  mutate(amenities = trimws(amenities)) %>%
+  filter(amenities != "")
+
+#calculo total de viviendas por tipo
+total_por_tipo <- casas %>%
+  group_by(tipo_vivienda) %>%
+  summarise(total_viviendas = n(), .groups = "drop")
+
+#se cuenta las ocurrencias de cada amenity por tipo
+conteo_amenities <- amenities_expandido %>%
+  distinct(id_casa, tipo_vivienda, amenities) %>%
+  count(tipo_vivienda, amenities, name = "cantidad") %>%
+  left_join(total_por_tipo, by = "tipo_vivienda") %>%
+  mutate(porcentaje = round(100 * cantidad / total_viviendas, 1))
+
+#Pivot
+amenities_por_tipo <- conteo_amenities %>%
+  select(tipo_vivienda, amenities, porcentaje) %>%
+  pivot_wider(
+    names_from = amenities,
+    values_from = porcentaje,
+    values_fill = 0
+  )
+
+#Genero CSV
+write.csv(amenities_por_tipo, 
+          file = file.path(outstub, "amenities_por_tipo.csv"), 
+          row.names = FALSE)
+
+
+#==============================Ejercicio 13===========================================
+# join con transacciones para tener el id_alquila y luego join con usuarrios_alquilan
+calificaciones <- detalles_transacciones %>%
+  filter(!is.na(calificacion_huesped) & !is.na(calificacion_anfitrion)) %>%
+  left_join(transacciones, by = "id_transaccion") %>%
+  left_join(usuarios_alquilan, by = "id_alquila")
+
+# Creo rangos de edad
+calificaciones <- calificaciones %>%
+  mutate(
+    rango_edad_huesped = case_when(
+      edad >= 18 & edad <= 25 ~ "18-25",
+      edad >= 26 & edad <= 35 ~ "26-35",
+      edad >= 36 & edad <= 50 ~ "36-50",
+      edad >= 51 ~ "51+",
+      TRUE ~ "Sin dato"
+    )
+  )
+
+# calculo diferencia entre calificaciones
+calificaciones <- calificaciones %>%
+  mutate(diferencia = calificacion_anfitrion - calificacion_huesped)
+
+# agrupo por sexo y rango de edad
+resultado_demografico <- calificaciones %>%
+  group_by(sexo, rango_edad_huesped) %>%
+  summarise(
+    num_transacciones = n(),
+    calificacion_media_recibida = mean(calificacion_huesped, na.rm = TRUE),
+    calificacion_media_otorgada = mean(calificacion_anfitrion, na.rm = TRUE),
+    diferencia_media = mean(diferencia, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# genero CSV
+write.csv(resultado_demografico, 
+          file = file.path(outstub, "analisis_demografico_calificaciones.csv"), 
+          row.names = FALSE)
+
+
+#==============================Ejercicio 15===========================================
+#join entre transacciones y casas
+reservas <- transacciones %>%
+  left_join(casas, by = "id_casa") %>%
+  select(id_alquila, fecha_transaccion, categoria) %>%
+  filter(!is.na(categoria))
+
+# se filtran usuarios con mas de una reserva
+reservas <- reservas %>%
+  group_by(id_alquila) %>%
+  filter(n() > 1) %>%
+  arrange(id_alquila, fecha_transaccion) %>%
+  mutate(num_reserva = row_number()) %>%
+  ungroup()
+
+#se crean pares consecutivos de reservas por usuario
+reservas_siguiente <- reservas %>%
+  mutate(num_reserva = num_reserva - 1) %>%
+  rename(categoria_siguiente = categoria)
+
+transiciones <- reservas %>%
+  inner_join(reservas_siguiente,
+             by = c("id_alquila", "num_reserva")) %>%
+  select(id_alquila, categoria_actual = categoria, categoria_siguiente)
+
+# se calcula frecuencia y porcentaje de transiciones
+frecuencia_transicion <- transiciones %>%
+  count(categoria_actual, categoria_siguiente) %>%
+  group_by(categoria_actual) %>%
+  mutate(porcentaje = round(100 * n / sum(n), 1)) %>%
+  ungroup()
+
+# pivot
+matriz_pivoteada <- frecuencia_transicion %>%
+  select(categoria_actual, categoria_siguiente, porcentaje) %>%
+  pivot_wider(
+    names_from = categoria_siguiente,
+    values_from = porcentaje,
+    values_fill = 0
+  )
+
+#genero CSV
+write.csv(matriz_pivoteada, 
+          file = file.path(outstub, "matriz_transicion_pivoteada.csv"), 
+          row.names = FALSE)
+#==============================Ejercicio 17===========================================
+#join entre transacciones, detalles & casas
+ocupacion_data <- transacciones %>%
+  left_join(detalles_transacciones, by = "id_transaccion") %>%
+  left_join(casas, by = "id_casa") %>%
+  filter(!is.na(fecha_checkin) & !is.na(fecha_checkout))
+
+ocupacion_expandida <- ocupacion_data %>%
+  rowwise() %>%
+  mutate(dias_estadia = list(seq(fecha_checkin, fecha_checkout - 1, by = "day"))) %>%
+  unnest(dias_estadia) %>%
+  ungroup()
+
+#se extrae mes y año de cada fecha
+ocupacion_expandida <- ocupacion_expandida %>%
+  mutate(
+    mes_numero = month(dias_estadia),
+    mes_nombre = month(dias_estadia, label = TRUE, abbr = FALSE),
+    anio = year(dias_estadia)
+  )
+
+#se calcula ocupacion por casa y mes
+ocupacion_por_casa <- ocupacion_expandida %>%
+  count(id_casa, provincia_ubicacion, anio, mes_numero, mes_nombre, name = "dias_ocupados")
+
+#se agrega total de dias del mes por casa
+ocupacion_por_casa <- ocupacion_por_casa %>%
+  mutate(dias_mes = days_in_month(ymd(paste(anio, mes_numero, "01"))),
+         ocupacion_mensual = dias_ocupados / dias_mes)
+
+# se agrega a nivel provincia & mes
+ocupacion_por_provincia <- ocupacion_por_casa %>%
+  group_by(provincia_ubicacion, mes_numero, mes_nombre) %>%
+  summarise(
+    ocupacion_promedio = mean(ocupacion_mensual, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# se calcula ocupacion anual por provincia
+ocupacion_anual <- ocupacion_por_provincia %>%
+  group_by(provincia_ubicacion) %>%
+  summarise(ocupacion_anual_promedio = mean(ocupacion_promedio), .groups = "drop")
+
+# se calcula indice de estacionalidad y variabilidad
+final <- ocupacion_por_provincia %>%
+  left_join(ocupacion_anual, by = "provincia_ubicacion") %>%
+  mutate(
+    indice_estacionalidad = ocupacion_promedio / ocupacion_anual_promedio,
+    variabilidad = abs(indice_estacionalidad - 1)
+  ) %>%
+  arrange(provincia_ubicacion, mes_numero)
+
+#Genero CSV
+write.csv(final, 
+          file = file.path(outstub, "estacionalidad_provincia.csv"), 
+          row.names = FALSE)
+
+
